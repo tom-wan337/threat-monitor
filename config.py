@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'threat-monitor-secret-key-2024'
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///threat_monitor.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
@@ -14,7 +14,3 @@ class Config:
     # Monitoring settings
     SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', 30))
     MAX_ALERTS_PER_PAGE = 20
-    
-    # Rate limiting
-    REQUESTS_PER_MINUTE = 60
-    REQUEST_TIMEOUT = 10

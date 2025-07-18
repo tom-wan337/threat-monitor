@@ -808,3 +808,101 @@ def update_alert(alert_id):
         return jsonify({'message': 'Alert updated successfully'})
     
     except Exception as e:
+        logger.error(f"❌ Error updating alert: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/stats')
+def dashboard_stats():
+    try:
+        total_alerts = Alert.query.count()
+        new_alerts = Alert.query.filter_by(status='new').count()
+        critical_alerts = Alert.query.filter_by(risk_level='critical').count()
+        active_targets = MonitoringTarget.query.filter_by(active=True).count()
+        
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        recent_alerts = db.session.query(
+            Alert.risk_level,
+            db.func.count(Alert.id).label('count')
+        ).filter(
+            Alert.created_at >= week_ago
+        ).group_by(Alert.risk_level).all()
+        
+        return jsonify({
+            'total_alerts': total_alerts,
+            'new_alerts': new_alerts,
+            'critical_alerts': critical_alerts,
+            'active_targets': active_targets,
+            'recent_alerts_by_risk': {level: count for level, count in recent_alerts}
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Error fetching dashboard stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scan/manual', methods=['POST'])
+def manual_scan():
+    """Trigger manual monitoring scan"""
+    try:
+        logger.info("🚀 Manual scan triggered")
+        alerts_created = monitor.monitor_all_targets()
+        return jsonify({
+            'message': f'Manual scan completed. {alerts_created} new alerts created.',
+            'alerts_created': alerts_created
+        })
+    except Exception as e:
+        logger.error(f"❌ Manual scan error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Background monitoring function
+def run_monitoring_scan():
+    """Background task to run monitoring scans"""
+    with app.app_context():
+        try:
+            alerts_created = monitor.monitor_all_targets()
+            logger.info(f"⏰ Scheduled scan completed. {alerts_created} new alerts created.")
+        except Exception as e:
+            logger.error(f"❌ Scheduled scan error: {e}")
+
+# Initialize database
+def init_db():
+    """Initialize database and create tables"""
+    db.create_all()
+    logger.info("✅ Database initialized")
+
+# Start background scheduler
+def start_scheduler():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=run_monitoring_scan,
+        trigger="interval",
+        minutes=30,  # Run every 30 minutes
+        id='monitoring_scan'
+    )
+    
+    try:
+        scheduler.start()
+        logger.info("⏰ Background monitoring started (30-minute intervals)")
+        atexit.register(lambda: scheduler.shutdown())
+        return scheduler
+    except Exception as e:
+        logger.error(f"❌ Failed to start scheduler: {e}")
+        return None
+
+if __name__ == '__main__':
+    # Initialize everything
+    with app.app_context():
+        init_db()
+    
+    # Start background monitoring
+    scheduler = start_scheduler()
+    
+    print("\n" + "="*60)
+    print("🛡️  THREAT MONITOR DASHBOARD")
+    print("="*60)
+    print("🌐 Dashboard: http://localhost:5000")
+    print("📊 API Docs: http://localhost:5000/api/dashboard/stats")
+    print("🔍 Background monitoring: Every 30 minutes")
+    print("="*60 + "\n")
+    
+    # Run the app
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
