@@ -219,3 +219,497 @@
                                 <option value="company">🏢 Company</option>
                                 <option value="domain">🌐 Domain</option>
                                 <option value="brand">🏷️ Brand</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Keywords (comma-separated) *</label>
+                            <textarea class="form-control" id="targetKeywords" rows="3" required
+                                      placeholder="e.g., data breach, security incident, company name"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="addTarget()">Add Target</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Global variables
+    let currentSection = 'dashboard';
+    let currentPage = 1;
+    let lastUpdated = new Date();
+
+    // Initialize dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDashboardStats();
+        document.getElementById('last-updated').textContent = lastUpdated.toLocaleString();
+        
+        // Set up filters
+        document.getElementById('risk-filter').addEventListener('change', function() {
+            loadAlerts(1);
+        });
+        document.getElementById('status-filter').addEventListener('change', function() {
+            loadAlerts(1);
+        });
+    });
+
+    // Navigation
+    function showSection(section) {
+        // Hide all sections
+        document.querySelectorAll('.section').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        // Show selected section
+        document.getElementById(section + '-section').classList.add('active');
+        
+        // Update navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        event.target.classList.add('active');
+        
+        currentSection = section;
+        
+        // Load section data
+        if (section === 'alerts') loadAlerts(1);
+        if (section === 'targets') loadTargets();
+        if (section === 'dashboard') loadDashboardStats();
+    }
+
+    // Dashboard functions
+    async function loadDashboardStats() {
+        try {
+            const response = await fetch('/api/dashboard/stats');
+            const stats = await response.json();
+            
+            document.getElementById('total-alerts').textContent = stats.total_alerts || 0;
+            document.getElementById('critical-alerts').textContent = stats.critical_alerts || 0;
+            document.getElementById('new-alerts').textContent = stats.new_alerts || 0;
+            document.getElementById('active-targets').textContent = stats.active_targets || 0;
+            
+            // Load recent alerts
+            loadRecentAlerts();
+            
+            // Update timestamp
+            lastUpdated = new Date();
+            document.getElementById('last-updated').textContent = lastUpdated.toLocaleString();
+        } catch (error) {
+            console.error('Error loading dashboard stats:', error);
+        }
+    }
+
+    async function loadRecentAlerts() {
+        try {
+            const response = await fetch('/api/alerts?page=1');
+            const data = await response.json();
+            
+            const container = document.getElementById('recent-alerts');
+            
+            if (data.alerts && data.alerts.length > 0) {
+                container.innerHTML = '';
+                
+                data.alerts.slice(0, 5).forEach(alert => {
+                    const alertElement = createAlertCard(alert);
+                    container.appendChild(alertElement);
+                });
+            } else {
+                container.innerHTML = '<p class="text-muted">No recent alerts</p>';
+            }
+        } catch (error) {
+            console.error('Error loading recent alerts:', error);
+            document.getElementById('recent-alerts').innerHTML = 
+                '<div class="alert alert-danger">Failed to load alerts</div>';
+        }
+    }
+
+    // Alerts functions
+    async function loadAlerts(page = 1) {
+        const riskFilter = document.getElementById('risk-filter').value;
+        const statusFilter = document.getElementById('status-filter').value;
+        
+        let url = `/api/alerts?page=${page}`;
+        if (riskFilter) url += `&risk_level=${riskFilter}`;
+        if (statusFilter) url += `&status=${statusFilter}`;
+        
+        try {
+            document.getElementById('alerts-container').innerHTML = `
+                <div class="loading">
+                    <div class="spinner-border" role="status"></div>
+                    <p>Loading alerts...</p>
+                </div>
+            `;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            const container = document.getElementById('alerts-container');
+            
+            if (data.alerts && data.alerts.length > 0) {
+                container.innerHTML = '';
+                
+                data.alerts.forEach(alert => {
+                    const alertElement = createAlertCard(alert, true);
+                    container.appendChild(alertElement);
+                });
+                
+                // Create pagination
+                createPagination('alerts-pagination', data.pages, data.current_page, loadAlerts);
+            } else {
+                container.innerHTML = '<p class="text-muted">No alerts found</p>';
+                document.getElementById('alerts-pagination').innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Error loading alerts:', error);
+            document.getElementById('alerts-container').innerHTML = 
+                '<div class="alert alert-danger">Failed to load alerts</div>';
+        }
+    }
+
+    function createAlertCard(alert, showActions = false) {
+        const div = document.createElement('div');
+        div.className = `card alert-card risk-${alert.risk_level}`;
+        
+        const riskBadgeClass = {
+            'critical': 'bg-danger',
+            'high': 'bg-warning',
+            'medium': 'bg-info',
+            'low': 'bg-success'
+        };
+        
+        div.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <h5 class="card-title">${alert.title}</h5>
+                        <p class="card-text text-muted">${alert.description || 'No description available'}</p>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="badge ${riskBadgeClass[alert.risk_level]}">${alert.risk_level.toUpperCase()}</span>
+                            <small class="text-muted">
+                                <i class="fas fa-${getSourceIcon(alert.source_type)}"></i> ${alert.source_type}
+                            </small>
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> ${new Date(alert.created_at).toLocaleString()}
+                            </small>
+                            <small class="text-muted">
+                                <i class="fas fa-crosshairs"></i> ${alert.target_name}
+                            </small>
+                        </div>
+                    </div>
+                    ${showActions ? `
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            Actions
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="${alert.source_url}" target="_blank">View Source</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="updateAlertStatus(${alert.id}, 'reviewed')">Mark as Reviewed</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="updateAlertStatus(${alert.id}, 'resolved')">Mark as Resolved</a></li>
+                        </ul>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        return div;
+    }
+
+    function getSourceIcon(sourceType) {
+        const icons = {
+            'reddit': 'reddit',
+            'twitter': 'twitter',
+            'news': 'newspaper',
+            'github': 'github',
+            'hackernews': 'hacker-news',
+            'social': 'share-alt'
+        };
+        return icons[sourceType] || 'globe';
+    }
+
+    async function updateAlertStatus(alertId, status) {
+        try {
+            const response = await fetch(`/api/alerts/${alertId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status })
+            });
+            
+            if (response.ok) {
+                // Reload current view
+                if (currentSection === 'alerts') {
+                    loadAlerts(currentPage);
+                } else if (currentSection === 'dashboard') {
+                    loadDashboardStats();
+                }
+                
+                showToast(`Alert marked as ${status}`, 'success');
+            } else {
+                showToast('Failed to update alert', 'danger');
+            }
+        } catch (error) {
+            console.error('Error updating alert:', error);
+            showToast('Error updating alert', 'danger');
+        }
+    }
+
+    function createPagination(containerId, totalPages, currentPage, callback) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let html = `
+            <ul class="pagination justify-content-center">
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="event.preventDefault(); ${callback.name}(1)">First</a>
+                </li>
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="event.preventDefault(); ${callback.name}(${currentPage - 1})">Previous</a>
+                </li>
+        `;
+        
+        const maxPages = 5;
+        const startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+        const endPage = Math.min(totalPages, startPage + maxPages - 1);
+        
+        for (let i = startPage; i <= endPage; i++) {
+            html += `
+                <li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="event.preventDefault(); ${callback.name}(${i})">${i}</a>
+                </li>
+            `;
+        }
+        
+        html += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="event.preventDefault(); ${callback.name}(${currentPage + 1})">Next</a>
+                </li>
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="event.preventDefault(); ${callback.name}(${totalPages})">Last</a>
+                </li>
+            </ul>
+        `;
+        
+        container.innerHTML = html;
+    }
+
+    // Target functions
+    async function loadTargets() {
+        try {
+            document.getElementById('targets-container').innerHTML = `
+                <div class="loading">
+                    <div class="spinner-border" role="status"></div>
+                    <p>Loading targets...</p>
+                </div>
+            `;
+            
+            const response = await fetch('/api/targets');
+            const targets = await response.json();
+            
+            const container = document.getElementById('targets-container');
+            
+            if (targets && targets.length > 0) {
+                container.innerHTML = '';
+                
+                targets.forEach(target => {
+                    const targetElement = createTargetCard(target);
+                    container.appendChild(targetElement);
+                });
+            } else {
+                container.innerHTML = `
+                    <div class="alert alert-info">
+                        <p>No monitoring targets found. Add your first target to start monitoring!</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading targets:', error);
+            document.getElementById('targets-container').innerHTML = 
+                '<div class="alert alert-danger">Failed to load targets</div>';
+        }
+    }
+
+    function createTargetCard(target) {
+        const div = document.createElement('div');
+        div.className = 'card mb-3';
+        
+        div.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="card-title">${target.name}</h5>
+                        <p class="card-text">
+                            <strong>Type:</strong> ${target.target_type}<br>
+                            <strong>Keywords:</strong> ${target.keywords.join(', ')}<br>
+                            <strong>Created:</strong> ${new Date(target.created_at).toLocaleString()}
+                        </p>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-primary mb-2">${target.alert_count} alerts</span><br>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteTarget(${target.id})">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return div;
+    }
+
+    async function addTarget() {
+        const name = document.getElementById('targetName').value;
+        const type = document.getElementById('targetType').value;
+        const keywords = document.getElementById('targetKeywords').value;
+        
+        if (!name || !type || !keywords) {
+            showToast('Please fill in all required fields', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/targets', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: name,
+                    target_type: type,
+                    keywords: keywords
+                })
+            });
+            
+            if (response.ok) {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addTargetModal'));
+                modal.hide();
+                
+                // Clear form
+                document.getElementById('addTargetForm').reset();
+                
+                // Reload targets
+                loadTargets();
+                loadDashboardStats();
+                
+                showToast('Target added successfully', 'success');
+            } else {
+                const data = await response.json();
+                showToast(data.error || 'Failed to add target', 'danger');
+            }
+        } catch (error) {
+            console.error('Error adding target:', error);
+            showToast('Error adding target', 'danger');
+        }
+    }
+
+    async function deleteTarget(targetId) {
+        if (!confirm('Are you sure you want to delete this target?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/targets/${targetId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                loadTargets();
+                loadDashboardStats();
+                showToast('Target deleted successfully', 'success');
+            } else {
+                showToast('Failed to delete target', 'danger');
+            }
+        } catch (error) {
+            console.error('Error deleting target:', error);
+            showToast('Error deleting target', 'danger');
+        }
+    }
+
+    // Utility functions
+    async function manualScan() {
+        try {
+            const button = document.getElementById('scanBtn');
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Scanning...';
+            
+            const response = await fetch('/api/scan/manual', {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                showToast(result.message, 'success');
+                loadDashboardStats();
+                if (currentSection === 'alerts') {
+                    loadAlerts(1);
+                }
+            } else {
+                showToast(result.error || 'Scan failed', 'danger');
+            }
+        } catch (error) {
+            console.error('Error during manual scan:', error);
+            showToast('Error during scan', 'danger');
+        } finally {
+            const button = document.getElementById('scanBtn');
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-sync-alt"></i> Manual Scan';
+        }
+    }
+
+    function refreshData() {
+        if (currentSection === 'dashboard') {
+            loadDashboardStats();
+        } else if (currentSection === 'alerts') {
+            loadAlerts(currentPage);
+        } else if (currentSection === 'targets') {
+            loadTargets();
+        }
+        
+        showToast('Data refreshed', 'info');
+    }
+
+    function showToast(message, type = 'info') {
+        const toastContainer = document.querySelector('.toast-container');
+        
+        const toast = document.createElement('div');
+        toast.className = `toast show bg-${type} text-white`;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
+        toast.setAttribute('aria-atomic', 'true');
+        
+        toast.innerHTML = `
+            <div class="toast-header bg-${type} text-white">
+                <strong class="me-auto">Threat Monitor</strong>
+                <small>Just now</small>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        `;
+        
+        toastContainer.appendChild(toast);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toastContainer.removeChild(toast);
+            }, 500);
+        }, 5000);
+    }
+</script>
+</body>
+</html>
