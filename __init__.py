@@ -16,9 +16,10 @@ db = SQLAlchemy()
 def create_app():
     app = Flask(__name__, template_folder='../dashboard')
     
-    # Load configuration
-    from config import Config
-   app.config.from_object(Config)
+    # Set configuration directly
+    app.config['SECRET_KEY'] = 'threat-monitor-secret-key-2024'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///threat_monitor.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Initialize extensions
     db.init_app(app)
