@@ -15,14 +15,17 @@ class MonitoringTarget(db.Model):
     alerts = db.relationship('Alert', backref='target', lazy=True, cascade='all, delete-orphan')
     
     def get_keywords(self):
-        return json.loads(self.keywords)
+        try:
+            return json.loads(self.keywords)
+        except:
+            return []
     
     def set_keywords(self, keywords_list):
         self.keywords = json.dumps(keywords_list)
 
 class Alert(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    target_id = db.Column(db.Integer, db.ForeignKey('monitoring_target.id'), nullable=False)
+    target_id = db.Column(db.Integer, db.ForeignKey('monitoring_target.id'), nullable=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     source_url = db.Column(db.String(500))
@@ -31,6 +34,16 @@ class Alert(db.Model):
     status = db.Column(db.String(20), default='new')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     content_hash = db.Column(db.String(64), unique=True)
+    location = db.Column(db.String(100))
+    query_type = db.Column(db.String(50), default='monitoring')
+
+class SearchQuery(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    topic = db.Column(db.String(200), nullable=False)
+    location = db.Column(db.String(100))
+    query_text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    results_count = db.Column(db.Integer, default=0)
 
 class DataSource(db.Model):
     id = db.Column(db.Integer, primary_key=True)

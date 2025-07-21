@@ -14,3 +14,4 @@ class Config:
     # Monitoring settings
     SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', 30))
     MAX_ALERTS_PER_PAGE = 20
+    REQUEST_TIMEOUT = 10  # Added this line
